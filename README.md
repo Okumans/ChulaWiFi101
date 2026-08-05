@@ -16,26 +16,34 @@ Run each step in the same interactive Bash terminal. This keeps the `IFACE`, `PR
 
 ### 1. Prepare NetworkManager
 
-Check that the required commands are installed:
+Make sure the required command-line tools are installed. They are present on most Linux systems that use NetworkManager:
 
 ```bash
 command -v nmcli
 command -v systemctl
 ```
 
-NetworkManager is normally already running. This check avoids root access when it is active; the `else` branch starts and enables it for future boots when necessary:
+`nmcli` configures NetworkManager, `systemctl` manages the service, and the service name is `NetworkManager.service`.
+
+Check the service status manually:
 
 ```bash
-if systemctl is-active --quiet NetworkManager.service; then
-    printf '%s\n' 'NetworkManager is already running.'
-else
-    sudo systemctl enable --now NetworkManager.service
-fi
+systemctl is-active NetworkManager.service
+```
 
+If the result is not `active`, start and enable NetworkManager:
+
+```bash
+sudo systemctl enable --now NetworkManager.service
+```
+
+Confirm that NetworkManager is reachable over D-Bus:
+
+```bash
 nmcli general status
 ```
 
-If `nmcli general status` cannot contact NetworkManager over D-Bus, stop here and fix that service before continuing.
+If this fails, stop here and fix the service before continuing.
 
 ### 2. Turn on Wi-Fi and select the interface
 
@@ -67,24 +75,24 @@ PROFILE='ChulaWiFi'
 SSID='ChulaWiFi'
 ```
 
-If you want to preserve an existing profile named `ChulaWiFi`, choose a new profile name such as `ChulaWiFi-clean` before continuing. Create the profile only if it does not already exist:
+If you want to preserve an existing profile named `ChulaWiFi`, choose a new profile name such as `ChulaWiFi-clean` before continuing. Check whether the profile already exists:
 
 ```bash
-if nmcli connection show id "$PROFILE" >/dev/null 2>&1; then
-    printf "Using existing profile '%s'.\n" "$PROFILE"
-else
-    nmcli connection add type wifi ifname "$IFACE" \
-        con-name "$PROFILE" ssid "$SSID"
-fi
+nmcli connection show id "$PROFILE"
+```
+
+If NetworkManager says the profile does not exist, create it:
+
+```bash
+nmcli connection add type wifi ifname "$IFACE" con-name "$PROFILE" ssid "$SSID"
 ```
 
 ### 4. Enter the CUNET identity
 
-Enter the identity used by your CUNET Account. Do not put the password in this command or in the README; NetworkManager will ask for it securely at activation time:
+Enter the identity used by your CUNET Account. Replace the example value below with your own identity. Do not put the password in this command or in the README; NetworkManager will ask for it securely at activation time:
 
 ```bash
-read -r -p 'CUNET identity: ' CHULA_IDENTITY
-[[ -n "$CHULA_IDENTITY" ]] || { echo 'Identity cannot be empty.' >&2; exit 1; }
+CHULA_IDENTITY='67xxxxxxxx' # Replace with your own CUNET identity.
 ```
 
 ### 5. Configure WPA-EAP and ChulaWiFi compatibility
@@ -119,15 +127,10 @@ Never set `DEFAULT@SECLEVEL=0` globally in `/etc/ssl/openssl.cnf`, and do not ru
 
 ### 6. Activate the profile
 
-Ask NetworkManager for the password and activate the profile:
+Ask NetworkManager for the password, then enable autoconnect only if activation succeeds:
 
 ```bash
-if nmcli --ask connection up "$PROFILE" ifname "$IFACE"; then
-    nmcli connection modify "$PROFILE" connection.autoconnect yes
-else
-    printf "Activation failed; autoconnect remains disabled for '%s'.\n" "$PROFILE" >&2
-    exit 1
-fi
+nmcli --ask connection up "$PROFILE" ifname "$IFACE" && nmcli connection modify "$PROFILE" connection.autoconnect yes
 ```
 
 Autoconnect is enabled only after a successful activation. Confirm the result:
