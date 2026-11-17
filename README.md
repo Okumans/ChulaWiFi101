@@ -4,6 +4,8 @@ This is a copy-paste setup for Linux systems using `NetworkManager`, `systemd`, 
 
 The first attempt failed after Wi-Fi association, during 802.1X authentication: modern OpenSSL rejected the older TLS/cipher requirements of the legacy ChulaWiFi service. The client policy was too strict; this was not necessarily a bad password. The setup enables the required legacy settings for this profile only:
 
+The long-term fix is for the institution to upgrade its authentication tunnel to a modern TLS version. [ArchWiki's NetworkManager guidance](https://wiki.archlinux.org/title/Networkmanager#WPA_Enterprise_connections_fail_to_authenticate_with_OpenSSL_%22unsupported_protocol%22_error) describes this OpenSSL error and the per-connection workaround: `phase1-auth-flags=32` allows TLS 1.0, while `64` allows TLS 1.1. This profile uses `0x60` to allow both.
+
 - PEAP version 0 with MSCHAPv2.
 - TLS 1.0/1.1 compatibility using `phase1-auth-flags 0x60`.
 - `DEFAULT@SECLEVEL=0` for the profile, not system-wide.
