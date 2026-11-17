@@ -8,6 +8,8 @@ readonly DEFAULT_SSID='ChulaWiFi'
 PROFILE="$DEFAULT_PROFILE"
 SSID="$DEFAULT_SSID"
 IFACE=''
+CERT_PATH=''
+SKIP_CERT_VALIDATION=0
 
 die() {
     printf 'Error: %s\n' "$*" >&2
@@ -21,16 +23,24 @@ Usage: ./setup-chulawifi.sh [options]
 Create or update a NetworkManager profile for ChulaWiFi and activate it.
 The CUNET identity and password are requested interactively; credentials are
 never stored in this script or passed as command-line arguments.
+Pass --cert-path PATH for certificate-based server verification. Without
+it, the script asks before continuing without server certificate verification.
+An interactive terminal is required for the CUNET identity and password.
 
 Options:
   -i, --interface NAME  Use this Wi-Fi interface instead of auto-detection.
   -p, --profile NAME    Use this NetworkManager profile name.
   -s, --ssid NAME       Use this Wi-Fi SSID.
+  -c, --cert-path PATH  Use the Chula PEM certificate.
+      --dangerously-skip-server-cert-verification
+                        Continue without checking the server certificate.
   -h, --help            Show this help.
 
 Examples:
   ./setup-chulawifi.sh
   ./setup-chulawifi.sh --interface wlp0s20f3
+  ./setup-chulawifi.sh --cert-path /etc/NetworkManager/certs/chula-wifi.pem
+  ./setup-chulawifi.sh --dangerously-skip-server-cert-verification
   ./setup-chulawifi.sh --profile ChulaWiFi-clean
 USAGE
 }
@@ -115,6 +125,16 @@ parse_args() {
                 SSID=$2
                 shift 2
                 ;;
+            -c|--cert-path)
+                (( $# >= 2 )) || die "$1 requires a value."
+                [[ -n "$2" ]] || die "$1 requires a non-empty path."
+                CERT_PATH=$2
+                shift 2
+                ;;
+            --dangerously-skip-server-cert-verification)
+                SKIP_CERT_VALIDATION=1
+                shift
+                ;;
             -h|--help)
                 usage
                 exit 0
@@ -137,10 +157,35 @@ main() {
     local device_status
     local chula_identity
     local profile_type
+    local confirm_without_cert
+    local cert_domain
 
     parse_args "$@"
     require_command nmcli
     require_command systemctl
+
+    [[ -z "$CERT_PATH" || "$SKIP_CERT_VALIDATION" == 0 ]] || die \
+        'Choose either --cert-path or --dangerously-skip-server-cert-verification, not both.'
+
+    if [[ -n "$CERT_PATH" ]]; then
+        require_command openssl
+        [[ -r "$CERT_PATH" ]] || die "Cannot read certificate: $CERT_PATH"
+        if ! openssl x509 -in "$CERT_PATH" -noout >/dev/null 2>&1; then
+            die "Could not read the PEM certificate at $CERT_PATH."
+        fi
+        cert_domain='wifi.it.chula.ac.th'
+    elif [[ "$SKIP_CERT_VALIDATION" == 1 ]]; then
+        printf '%s\n' \
+            'Warning: server certificate verification is disabled; a fake AP could steal your CUNET login.' >&2
+        cert_domain=''
+    else
+        [[ -t 0 ]] || die \
+            'Use --cert-path PATH, or explicitly pass --dangerously-skip-server-cert-verification.'
+        read -r -p 'No certificate path. Continue without server certificate verification? A fake AP could steal your CUNET login. [y/N] ' confirm_without_cert || die 'No choice entered.'
+        [[ "${confirm_without_cert,,}" == 'y' || "${confirm_without_cert,,}" == 'yes' ]] || \
+            die 'Install the Chula certificate and rerun with --cert-path PATH.'
+        cert_domain=''
+    fi
 
     if systemctl is-active --quiet NetworkManager.service; then
         printf '%s\n' 'NetworkManager is already running.'
@@ -203,6 +248,10 @@ main() {
         802-1x.phase2-auth mschapv2 \
         802-1x.phase2-autheap '' \
         802-1x.openssl-ciphers 'DEFAULT@SECLEVEL=0' \
+        802-1x.ca-cert "$CERT_PATH" \
+        802-1x.system-ca-certs no \
+        802-1x.ca-path '' \
+        802-1x.domain-match "$cert_domain" \
         802-1x.password-flags 0 \
         802-1x.identity "$chula_identity" \
         802-11-wireless.mac-address-randomization never
