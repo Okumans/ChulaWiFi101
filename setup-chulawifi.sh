@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+export PAGER=''
+
 readonly DEFAULT_PROFILE='ChulaWiFi'
 readonly DEFAULT_SSID='ChulaWiFi'
 
