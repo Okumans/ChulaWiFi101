@@ -244,10 +244,10 @@ main() {
         802-1x.eap peap \
         802-1x.phase1-peapver 0 \
         802-1x.phase1-peaplabel '' \
-        802-1x.phase1-auth-flags 0x60 \
+        802-1x.phase1-auth-flags 0x20 \
         802-1x.phase2-auth mschapv2 \
         802-1x.phase2-autheap '' \
-        802-1x.openssl-ciphers 'DEFAULT@SECLEVEL=0' \
+        802-1x.openssl-ciphers '' \
         802-1x.ca-cert "$CERT_PATH" \
         802-1x.system-ca-certs no \
         802-1x.ca-path '' \

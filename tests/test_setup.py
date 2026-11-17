@@ -101,4 +101,7 @@ esac''',
         commands = self.log.read_text()
         self.assertIn(f"<802-1x.ca-cert> <{self.cert}>", commands)
         self.assertIn("<802-1x.domain-match> <wifi.it.chula.ac.th>", commands)
+        self.assertIn("<802-1x.phase1-auth-flags> <0x20>", commands)
+        self.assertIn("<802-1x.openssl-ciphers> <>", commands)
+        self.assertNotIn("DEFAULT@SECLEVEL=0", commands)
         self.assertNotIn("sudo", commands)

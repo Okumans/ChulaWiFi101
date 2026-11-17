@@ -1,6 +1,6 @@
 # Connect to ChulaWiFi in Linux 101
 
-This is a copy-paste setup for Linux systems using `NetworkManager`, `systemd`, and `nmcli`. It modifies `NetworkManager` state and may disconnect the current Wi-Fi connection, so do not run it over an SSH session that depends on Wi-Fi.
+This is a copy-paste setup for Linux systems using `NetworkManager` with the `wpa_supplicant` OpenSSL backend, `systemd`, and `nmcli`. It modifies `NetworkManager` state and may disconnect the current Wi-Fi connection, so do not run it over an SSH session that depends on Wi-Fi.
 
 ## Why this is needed
 
@@ -15,11 +15,12 @@ This mismatch can produce an `unsupported protocol` error followed by `EAP authe
 The workaround enables older TLS settings for the ChulaWiFi profile only, while configuring certificate and domain checks to authenticate the server:
 
 - PEAP version 0 with MSCHAPv2.
-- TLS 1.0 compatibility using `phase1-auth-flags 0x60`, which also permits TLS 1.1.
-- `DEFAULT@SECLEVEL=0` for the profile, not system-wide.
+- TLS 1.0 compatibility using `phase1-auth-flags 0x20`.
 - The Chula self-signed certificate and `wifi.it.chula.ac.th` domain are checked for server authentication.
 
-[ArchWiki's NetworkManager guidance](https://wiki.archlinux.org/title/Networkmanager#WPA_Enterprise_connections_fail_to_authenticate_with_OpenSSL_%22unsupported_protocol%22_error) describes this error and the per-connection workaround: `phase1-auth-flags=32` allows TLS 1.0, while `64` allows TLS 1.1. This profile currently uses `0x60` to allow both, although TLS 1.0 is the verified server requirement. The flags permit those protocol versions; `DEFAULT@SECLEVEL=0` relaxes the OpenSSL security policy needed to use them.
+[ArchWiki's NetworkManager guidance](https://wiki.archlinux.org/title/Networkmanager#WPA_Enterprise_connections_fail_to_authenticate_with_OpenSSL_%22unsupported_protocol%22_error) describes this error and the per-connection workaround. This profile uses `phase1-auth-flags 0x20` (decimal `32`) to explicitly enable TLS 1.0. It does not disable newer TLS versions or explicitly enable TLS 1.1.
+
+When TLS 1.0 is explicitly enabled, [wpa_supplicant's OpenSSL implementation](https://android.googlesource.com/platform/external/wpa_supplicant_8/+/master/src/crypto/tls_openssl.c) automatically lowers the connection's OpenSSL security level as needed. A separate cipher override is therefore unnecessary for this implementation. The commands below clear any old override when updating an existing profile. The security relaxation still occurs, but only for this connection, not system-wide. This configuration was tested successfully on the author's system; other backends or builds may behave differently.
 
 The certificate check is separate from TLS compatibility: it helps prevent a fake access point from impersonating the university and capturing your login. It does not make the older TLS protocols modern or secure. Skipping certificate verification removes that server identity protection.
 
@@ -136,7 +137,7 @@ CHULA_IDENTITY='67xxxxxxxx' # Replace with your own CUNET identity.
 
 ### 6. Configure WPA-EAP and ChulaWiFi compatibility
 
-Apply the Wi-Fi security settings. `PEAP` with inner `MSCHAPv2` is the authentication method; `phase1-auth-flags 0x60` and profile-local `DEFAULT@SECLEVEL=0` provide compatibility with the legacy TLS requirements. The weaker TLS policy applies only to this profile:
+Apply the Wi-Fi security settings. `PEAP` with inner `MSCHAPv2` is the authentication method; `phase1-auth-flags 0x20` explicitly enables the required TLS 1.0 compatibility. The empty `openssl-ciphers` value clears any previous cipher override, leaving policy adjustment to `wpa_supplicant`:
 
 ```bash
 nmcli connection modify "$PROFILE" \
@@ -151,10 +152,10 @@ nmcli connection modify "$PROFILE" \
     802-1x.eap peap \
     802-1x.phase1-peapver 0 \
     802-1x.phase1-peaplabel '' \
-    802-1x.phase1-auth-flags 0x60 \
+    802-1x.phase1-auth-flags 0x20 \
     802-1x.phase2-auth mschapv2 \
     802-1x.phase2-autheap '' \
-    802-1x.openssl-ciphers 'DEFAULT@SECLEVEL=0' \
+    802-1x.openssl-ciphers '' \
     802-1x.ca-cert "$CERT_PATH" \
     802-1x.system-ca-certs no \
     802-1x.ca-path '' \
@@ -214,7 +215,7 @@ journalctl -u NetworkManager -b --no-pager | grep -Ei 'ChulaWiFi|wpa|802\.1x|eap
 ```
 
 - If `ChulaWiFi` is not listed, check the radio, interface, range, or access point.
-- If association succeeds but logs show TLS/cipher errors, confirm the three legacy settings in the setup above.
+- If association succeeds but logs show TLS/cipher errors, confirm the PEAP settings and `phase1-auth-flags 0x20`, and check that NetworkManager uses the `wpa_supplicant` OpenSSL backend described above.
 - If certificate verification fails, check the installed certificate path and SHA-256 fingerprint, and confirm the profile checks `wifi.it.chula.ac.th`.
 - If there are no TLS errors, re-enter the CUNET identity/password and check the account with Chula IT.
 - If authentication succeeds but there is no Internet access, inspect DHCP and campus service status.
